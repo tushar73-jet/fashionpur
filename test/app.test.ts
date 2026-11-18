@@ -57,4 +57,20 @@ describe('Meta webhook verification', () => {
     expect(response.statusCode).toBe(200);
     await app.close();
   });
+
+  it('verifies the original request body rather than re-serialized JSON', async () => {
+    const payload = '{\n  "object": "whatsapp_business_account"\n}';
+    const signature = `sha256=${createHmac('sha256', 'test-secret').update(payload).digest('hex')}`;
+    const app = createApp({ metaAppSecret: 'test-secret', metaVerifyToken: 'verify-me' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/webhooks/meta',
+      headers: { 'x-hub-signature-256': signature, 'content-type': 'application/json' },
+      payload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    await app.close();
+  });
 });

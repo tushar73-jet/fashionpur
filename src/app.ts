@@ -1,5 +1,12 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import { Readable } from 'node:stream';
 import { verifyMetaSignature } from './webhooks/meta-signature.js';
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    rawBody?: string;
+  }
+}
 
 export interface AppOptions {
   metaAppSecret?: string;
@@ -17,6 +24,17 @@ export function createApp(options: AppOptions = {}): FastifyInstance {
   }));
 
   if (metaAppSecret && metaVerifyToken) {
+    app.addHook('preParsing', (request, _reply, payload, done) => {
+      const chunks: Buffer[] = [];
+
+      payload.on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+      payload.on('error', done);
+      payload.on('end', () => {
+        request.rawBody = Buffer.concat(chunks).toString('utf8');
+        done(null, Readable.from(request.rawBody));
+      });
+    });
+
     app.get<{ Querystring: { 'hub.mode'?: string; 'hub.verify_token'?: string; 'hub.challenge'?: string } }>(
       '/webhooks/meta',
       async (request, reply) => {
@@ -31,7 +49,7 @@ export function createApp(options: AppOptions = {}): FastifyInstance {
     );
 
     app.post('/webhooks/meta', async (request, reply) => {
-      const rawBody = JSON.stringify(request.body);
+      const rawBody = request.rawBody ?? '';
       const signatureHeader = request.headers['x-hub-signature-256'];
       const signature = typeof signatureHeader === 'string' ? signatureHeader : undefined;
 
