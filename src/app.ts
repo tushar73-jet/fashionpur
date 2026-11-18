@@ -8,19 +8,21 @@ export interface AppOptions {
 
 export function createApp(options: AppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: true });
+  const metaAppSecret = options.metaAppSecret;
+  const metaVerifyToken = options.metaVerifyToken;
 
   app.get('/health', async () => ({
     service: 'fashionpur-whatsapp-service',
     status: 'ok',
   }));
 
-  if (options.metaAppSecret && options.metaVerifyToken) {
+  if (metaAppSecret && metaVerifyToken) {
     app.get<{ Querystring: { 'hub.mode'?: string; 'hub.verify_token'?: string; 'hub.challenge'?: string } }>(
       '/webhooks/meta',
       async (request, reply) => {
         const query = request.query;
 
-        if (query['hub.mode'] === 'subscribe' && query['hub.verify_token'] === options.metaVerifyToken) {
+        if (query['hub.mode'] === 'subscribe' && query['hub.verify_token'] === metaVerifyToken) {
           return reply.type('text/plain').send(query['hub.challenge'] ?? '');
         }
 
@@ -33,7 +35,7 @@ export function createApp(options: AppOptions = {}): FastifyInstance {
       const signatureHeader = request.headers['x-hub-signature-256'];
       const signature = typeof signatureHeader === 'string' ? signatureHeader : undefined;
 
-      if (!verifyMetaSignature(rawBody, signature, options.metaAppSecret)) {
+      if (!verifyMetaSignature(rawBody, signature, metaAppSecret)) {
         return reply.code(401).send();
       }
 
