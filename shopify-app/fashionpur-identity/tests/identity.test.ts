@@ -25,18 +25,18 @@ test("an invalid OTP cannot produce a session", async () => {
   const service = new IdentityService(new MockOtpProvider("123456"));
   const sent = await service.startOtp("+919934456783", "127.0.0.1");
   await assert.rejects(() => service.verifyOtp("+919934456783", sent.requestId, "999999", false), /invalid/);
-  assert.equal(service.getSession("never-issued"), null);
+  assert.equal(await service.getSession("never-issued"), null);
 });
 
 test("sessions can be destroyed and profile updates require the verified identity", async () => {
   const service = new IdentityService(new MockOtpProvider("123456"));
   const sent = await service.startOtp("+919934456783", "127.0.0.1");
   const identity = await service.verifyOtp("+919934456783", sent.requestId, "123456", false);
-  service.updateProfile(identity.id, { name: "Tushar", email: "tushar@example.com" });
-  const session = service.createSession(identity.id);
-  assert.equal(service.getSession(session.token)?.identity.email, "tushar@example.com");
-  service.destroySession(session.token);
-  assert.equal(service.getSession(session.token), null);
+  await service.updateProfile(identity.id, { name: "Tushar", email: "tushar@example.com" });
+  const session = await service.createSession(identity.id);
+  assert.equal((await service.getSession(session.token))?.identity.email, "tushar@example.com");
+  await service.destroySession(session.token);
+  assert.equal(await service.getSession(session.token), null);
 });
 
 test("OTP send rate limit protects a phone number", async () => {

@@ -16,6 +16,16 @@ export type CustomerIdentity = {
   marketingConsent: ConsentEvidence | null;
 };
 
+export interface IdentityGateway {
+  startOtp(phoneInput: string, ip: string): Promise<{ requestId: string; expiresAt: Date }>;
+  verifyOtp(phoneInput: string, requestId: string, code: string, consent: boolean): Promise<CustomerIdentity>;
+  createSession(identityId: string): Promise<{ token: string; csrfToken: string; expiresAt: Date }>;
+  getSession(token: string | null): Promise<{ identity: CustomerIdentity; csrfToken: string } | null>;
+  destroySession(token: string | null): Promise<void>;
+  updateProfile(identityId: string, profile: { name?: string; email?: string }): Promise<CustomerIdentity>;
+  updateMarketingConsent(identityId: string, optedIn: boolean): Promise<CustomerIdentity>;
+}
+
 type OtpChallenge = {
   requestId: string;
   phone: string;
@@ -44,7 +54,7 @@ function randomToken() {
 }
 
 /** In-memory repository used until Phase 2 adds Postgres/Prisma persistence. */
-export class IdentityService {
+export class IdentityService implements IdentityGateway {
   private readonly identitiesByPhone = new Map<string, CustomerIdentity>();
   private readonly identitiesById = new Map<string, CustomerIdentity>();
   private readonly challenges = new Map<string, OtpChallenge>();
@@ -88,7 +98,7 @@ export class IdentityService {
     return identity;
   }
 
-  createSession(identityId: string): { token: string; csrfToken: string; expiresAt: Date } {
+  async createSession(identityId: string): Promise<{ token: string; csrfToken: string; expiresAt: Date }> {
     const token = randomToken();
     const csrfToken = randomToken();
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
@@ -96,7 +106,7 @@ export class IdentityService {
     return { token, csrfToken, expiresAt };
   }
 
-  getSession(token: string | null): { identity: CustomerIdentity; csrfToken: string } | null {
+  async getSession(token: string | null): Promise<{ identity: CustomerIdentity; csrfToken: string } | null> {
     if (!token) return null;
     const session = this.sessions.get(sha256(token));
     if (!session || session.expiresAt <= new Date()) return null;
@@ -104,11 +114,11 @@ export class IdentityService {
     return identity ? { identity, csrfToken: session.csrfToken } : null;
   }
 
-  destroySession(token: string | null) {
+  async destroySession(token: string | null) {
     if (token) this.sessions.delete(sha256(token));
   }
 
-  updateProfile(identityId: string, profile: { name?: string; email?: string }) {
+  async updateProfile(identityId: string, profile: { name?: string; email?: string }) {
     const identity = this.identitiesById.get(identityId);
     if (!identity) throw new Error("Profile was not found.");
     if (profile.name !== undefined) identity.name = profile.name.trim().slice(0, 120) || null;
@@ -120,7 +130,7 @@ export class IdentityService {
     return identity;
   }
 
-  updateMarketingConsent(identityId: string, optedIn: boolean) {
+  async updateMarketingConsent(identityId: string, optedIn: boolean) {
     const identity = this.identitiesById.get(identityId);
     if (!identity) throw new Error("Profile was not found.");
     identity.marketingConsent = optedIn

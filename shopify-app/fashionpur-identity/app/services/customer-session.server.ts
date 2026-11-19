@@ -1,4 +1,4 @@
-import type { IdentityService } from "./identity.server";
+import type { IdentityGateway } from "./identity.server";
 
 const production = process.env.NODE_ENV === "production";
 const COOKIE_NAME = production ? "__Host-fashionpur_identity" : "fashionpur_identity_dev";
@@ -34,8 +34,8 @@ export function destroyCustomerSession() {
   return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${production ? "; Secure" : ""}`;
 }
 
-export function requireCustomerSession(request: Request, service: IdentityService) {
-  const session = service.getSession(cookieValue(request));
+export async function requireCustomerSession(request: Request, service: IdentityGateway) {
+  const session = await service.getSession(cookieValue(request));
   if (!session) throw new Response("Unauthorized", { status: 401, headers: noStoreHeaders() });
   return session;
 }

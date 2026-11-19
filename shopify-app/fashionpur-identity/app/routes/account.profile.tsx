@@ -3,7 +3,7 @@ import { assertCsrf, destroyCustomerSession, noStoreHeaders, requireCustomerSess
 import { getIdentityService } from "../services/identity-runtime.server";
 
 export async function loader({ request }: { request: Request }) {
-  const { identity, csrfToken } = requireCustomerSession(request, getIdentityService());
+  const { identity, csrfToken } = await requireCustomerSession(request, getIdentityService());
   const headers = noStoreHeaders();
   headers.set("content-type", "application/json");
   return new Response(JSON.stringify({ identity, csrfToken }), { headers });
@@ -11,20 +11,20 @@ export async function loader({ request }: { request: Request }) {
 
 export async function action({ request }: { request: Request }) {
   const service = getIdentityService();
-  const session = requireCustomerSession(request, service);
+  const session = await requireCustomerSession(request, service);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   if (intent === "logout") {
-    service.destroySession(sessionTokenFromRequest(request));
+    await service.destroySession(sessionTokenFromRequest(request));
     const headers = noStoreHeaders();
     headers.append("Set-Cookie", destroyCustomerSession());
     return redirect("/account/login", { headers });
   }
   assertCsrf(String(form.get("csrf") ?? ""), session.csrfToken);
   if (intent === "profile") {
-    service.updateProfile(session.identity.id, { name: String(form.get("name") ?? ""), email: String(form.get("email") ?? "") });
+    await service.updateProfile(session.identity.id, { name: String(form.get("name") ?? ""), email: String(form.get("email") ?? "") });
   } else if (intent === "consent") {
-    service.updateMarketingConsent(session.identity.id, form.get("marketingConsent") === "on");
+    await service.updateMarketingConsent(session.identity.id, form.get("marketingConsent") === "on");
   } else {
     throw new Response("Not found", { status: 404, headers: noStoreHeaders() });
   }
