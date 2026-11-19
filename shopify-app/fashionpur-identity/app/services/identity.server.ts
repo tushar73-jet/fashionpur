@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 import type { OtpProvider } from "./otp.server";
 
 export type ConsentEvidence = {
@@ -10,6 +11,9 @@ export type ConsentEvidence = {
 export type CustomerIdentity = {
   id: string;
   phone: string;
+  countryCode: string | null;
+  dialingCode: string | null;
+  locale: string | null;
   name: string | null;
   email: string | null;
   verifiedAt: Date;
@@ -18,7 +22,7 @@ export type CustomerIdentity = {
 
 export interface IdentityGateway {
   startOtp(phoneInput: string, ip: string): Promise<{ requestId: string; expiresAt: Date }>;
-  verifyOtp(phoneInput: string, requestId: string, code: string, consent: boolean): Promise<CustomerIdentity>;
+  verifyOtp(phoneInput: string, requestId: string, code: string, consent: boolean, locale?: string | null): Promise<CustomerIdentity>;
   createSession(identityId: string): Promise<{ token: string; csrfToken: string; expiresAt: Date }>;
   getSession(token: string | null): Promise<{ identity: CustomerIdentity; csrfToken: string } | null>;
   destroySession(token: string | null): Promise<void>;
@@ -41,9 +45,10 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const OTP_WINDOW_MS = 15 * 60 * 1000;
 const MAX_OTP_SENDS_PER_WINDOW = 3;
 
-export function normalizePhone(input: string): string | null {
-  const compact = input.trim().replace(/[\s()-]/g, "");
-  return /^\+[1-9]\d{7,14}$/.test(compact) ? compact : null;
+export function normalizePhone(input: string, country?: string | null): { e164: string; countryCode: string; dialingCode: string } | null {
+  const parsed = parsePhoneNumberFromString(input.trim(), country ? country.toUpperCase() as CountryCode : undefined);
+  if (!parsed?.isValid() || !parsed.country) return null;
+  return { e164: parsed.number, countryCode: parsed.country, dialingCode: `+${parsed.countryCallingCode}` };
 }
 
 function sha256(value: string) {
@@ -66,11 +71,11 @@ export class IdentityService implements IdentityGateway {
 
   async startOtp(phoneInput: string, ip: string): Promise<{ requestId: string; expiresAt: Date }> {
     const phone = normalizePhone(phoneInput);
-    if (!phone) throw new Error("Enter a valid mobile number with country code.");
-    this.consumeRateLimit(`phone:${phone}`);
+    if (!phone) throw new Error("Enter a valid international mobile number.");
+    this.consumeRateLimit(`phone:${phone.e164}`);
     this.consumeRateLimit(`ip:${ip}`);
-    const sent = await this.otpProvider.send(phone);
-    this.challenges.set(sent.requestId, { phone, requestId: sent.requestId, expiresAt: sent.expiresAt, consumed: false });
+    const sent = await this.otpProvider.send(phone.e164);
+    this.challenges.set(sent.requestId, { phone: phone.e164, requestId: sent.requestId, expiresAt: sent.expiresAt, consumed: false });
     return sent;
   }
 
@@ -79,22 +84,24 @@ export class IdentityService implements IdentityGateway {
     requestId: string,
     code: string,
     consent: boolean,
+    locale?: string | null,
   ): Promise<CustomerIdentity> {
     const phone = normalizePhone(phoneInput);
     const challenge = this.challenges.get(requestId);
-    if (!phone || !challenge || challenge.phone !== phone || challenge.consumed || challenge.expiresAt <= new Date()) {
+    if (!phone || !challenge || challenge.phone !== phone.e164 || challenge.consumed || challenge.expiresAt <= new Date()) {
       throw new Error("This verification request has expired. Please request a new code.");
     }
-    const result = await this.otpProvider.verify(phone, requestId, code);
+    const result = await this.otpProvider.verify(phone.e164, requestId, code);
     if (!result.verified) throw new Error("That verification code is invalid.");
     challenge.consumed = true;
-    let identity = this.identitiesByPhone.get(phone);
+    let identity = this.identitiesByPhone.get(phone.e164);
     if (!identity) {
-      identity = { id: crypto.randomUUID(), phone, name: null, email: null, verifiedAt: new Date(), marketingConsent: null };
+      identity = { id: crypto.randomUUID(), phone: phone.e164, countryCode: phone.countryCode, dialingCode: phone.dialingCode, locale: locale?.slice(0, 35) || null, name: null, email: null, verifiedAt: new Date(), marketingConsent: null };
     }
     identity.verifiedAt = new Date();
+    if (locale?.trim()) identity.locale = locale.trim().slice(0, 35);
     if (consent) identity.marketingConsent = { optedInAt: new Date(), source: "otp-login", policyVersion: "2026-11-19" };
-    this.identitiesByPhone.set(phone, identity);
+    this.identitiesByPhone.set(phone.e164, identity);
     this.identitiesById.set(identity.id, identity);
     return identity;
   }

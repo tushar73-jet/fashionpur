@@ -31,6 +31,9 @@ model Session {
 model IdentityCustomer {
   id String @id @default(uuid())
   phone String @unique
+  countryCode String?
+  dialingCode String?
+  locale String?
   name String?
   email String?
   verifiedAt DateTime

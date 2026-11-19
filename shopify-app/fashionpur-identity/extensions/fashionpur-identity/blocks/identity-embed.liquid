@@ -9,6 +9,7 @@
   data-cart-endpoint="/apps/fashionpur-identity/cart"
   data-return-to="{{ request.path | escape }}"
   data-delay="{{ block.settings.delay_seconds | times: 1000 }}"
+  data-country="{{ localization.country.iso_code | default: 'IN' }}"
   {{ block.shopify_attributes }}
 >
   <button type="button" class="fashionpur-identity__button" data-identity-login>

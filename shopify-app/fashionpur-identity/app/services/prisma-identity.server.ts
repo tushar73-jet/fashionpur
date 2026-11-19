@@ -10,9 +10,9 @@ const MAX_SENDS = 3;
 const hash = (value: string) => crypto.createHash("sha256").update(value).digest("hex");
 const token = () => crypto.randomBytes(32).toString("base64url");
 
-function toIdentity(customer: { id: string; phone: string; name: string | null; email: string | null; verifiedAt: Date; consents?: { status: string; source: string; policyVersion: string; capturedAt: Date; withdrawnAt: Date | null }[] }): CustomerIdentity {
+function toIdentity(customer: { id: string; phone: string; countryCode: string | null; dialingCode: string | null; locale: string | null; name: string | null; email: string | null; verifiedAt: Date; consents?: { status: string; source: string; policyVersion: string; capturedAt: Date; withdrawnAt: Date | null }[] }): CustomerIdentity {
   const active = customer.consents?.find((item) => item.status === "opted_in" && !item.withdrawnAt);
-  return { id: customer.id, phone: customer.phone, name: customer.name, email: customer.email, verifiedAt: customer.verifiedAt, marketingConsent: active ? { optedInAt: active.capturedAt, source: active.source === "profile" ? "profile" : "otp-login", policyVersion: active.policyVersion } : null };
+  return { id: customer.id, phone: customer.phone, countryCode: customer.countryCode, dialingCode: customer.dialingCode, locale: customer.locale, name: customer.name, email: customer.email, verifiedAt: customer.verifiedAt, marketingConsent: active ? { optedInAt: active.capturedAt, source: active.source === "profile" ? "profile" : "otp-login", policyVersion: active.policyVersion } : null };
 }
 
 /** Persistent implementation used whenever DATABASE_URL is set. */
@@ -23,20 +23,21 @@ export class PrismaIdentityService implements IdentityGateway {
   async startOtp(phoneInput: string, ip: string) {
     const phone = normalizePhone(phoneInput);
     if (!phone) throw new Error("Enter a valid mobile number with country code.");
-    this.limit(`phone:${phone}`); this.limit(`ip:${ip}`);
-    const sent = await this.otpProvider.send(phone);
-    await prisma.otpChallenge.upsert({ where: { requestId: sent.requestId }, create: { id: crypto.randomUUID(), requestId: sent.requestId, phone, expiresAt: sent.expiresAt }, update: { phone, expiresAt: sent.expiresAt, consumedAt: null } });
+    this.limit(`phone:${phone.e164}`); this.limit(`ip:${ip}`);
+    const sent = await this.otpProvider.send(phone.e164);
+    await prisma.otpChallenge.upsert({ where: { requestId: sent.requestId }, create: { id: crypto.randomUUID(), requestId: sent.requestId, phone: phone.e164, expiresAt: sent.expiresAt }, update: { phone: phone.e164, expiresAt: sent.expiresAt, consumedAt: null } });
     return sent;
   }
 
-  async verifyOtp(phoneInput: string, requestId: string, code: string, consent: boolean) {
+  async verifyOtp(phoneInput: string, requestId: string, code: string, consent: boolean, locale?: string | null) {
     const phone = normalizePhone(phoneInput);
     const challenge = await prisma.otpChallenge.findUnique({ where: { requestId } });
-    if (!phone || !challenge || challenge.phone !== phone || challenge.consumedAt || challenge.expiresAt <= new Date()) throw new Error("This verification request has expired. Please request a new code.");
-    if (!(await this.otpProvider.verify(phone, requestId, code)).verified) throw new Error("That verification code is invalid.");
+    if (!phone || !challenge || challenge.phone !== phone.e164 || challenge.consumedAt || challenge.expiresAt <= new Date()) throw new Error("This verification request has expired. Please request a new code.");
+    if (!(await this.otpProvider.verify(phone.e164, requestId, code)).verified) throw new Error("That verification code is invalid.");
     const customer = await prisma.$transaction(async (tx) => {
       await tx.otpChallenge.update({ where: { requestId }, data: { consumedAt: new Date() } });
-      const result = await tx.identityCustomer.upsert({ where: { phone }, create: { id: crypto.randomUUID(), phone, verifiedAt: new Date() }, update: { verifiedAt: new Date() } });
+      const preferredLocale = locale?.trim().slice(0, 35) || null;
+      const result = await tx.identityCustomer.upsert({ where: { phone: phone.e164 }, create: { id: crypto.randomUUID(), phone: phone.e164, countryCode: phone.countryCode, dialingCode: phone.dialingCode, locale: preferredLocale, verifiedAt: new Date() }, update: { verifiedAt: new Date(), countryCode: phone.countryCode, dialingCode: phone.dialingCode, ...(preferredLocale ? { locale: preferredLocale } : {}) } });
       if (consent) await tx.marketingConsent.create({ data: { id: crypto.randomUUID(), customerId: result.id, channel: "whatsapp", status: "opted_in", source: "otp-login", policyVersion: "2026-11-19" } });
       return tx.identityCustomer.findUniqueOrThrow({ where: { id: result.id }, include: { consents: { orderBy: { capturedAt: "desc" } } } });
     });

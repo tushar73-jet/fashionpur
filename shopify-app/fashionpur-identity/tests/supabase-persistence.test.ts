@@ -23,14 +23,14 @@ test("Supabase has Fashionpur Identity tables and persists a verified customer",
   for (const table of expectedTables) assert.ok(tables.some((row) => row.tablename === table), `${table} exists`);
 
   const service = new PrismaIdentityService(new MockOtpProvider("123456"));
-  const phone = `+91${String(Date.now()).slice(-10)}`;
+  const phone = `+1416555${String(Date.now()).slice(-4)}`;
   const cartToken = `phase3-test-${crypto.randomUUID()}`;
   const cartClaimSecret = crypto.randomBytes(32).toString("hex");
   let customerId: string | undefined;
   try {
     await prisma.customerCart.create({ data: { id: crypto.randomUUID(), shopifyCartToken: cartToken, claimSecretHash: crypto.createHash("sha256").update(cartClaimSecret).digest("hex"), status: "active" } });
     const challenge = await service.startOtp(phone, "127.0.0.1");
-    const customer = await service.verifyOtp(phone, challenge.requestId, "123456", true);
+    const customer = await service.verifyOtp(phone, challenge.requestId, "123456", true, "en-CA");
     customerId = customer.id;
     await service.claimCart(customer.id, cartToken, cartClaimSecret);
     await service.updateProfile(customer.id, { name: "Persistence Test", email: "persistence-test@example.invalid" });
@@ -39,6 +39,9 @@ test("Supabase has Fashionpur Identity tables and persists a verified customer",
     const restartedService = new PrismaIdentityService(new MockOtpProvider("123456"));
     const restored = await restartedService.getSession(session.token);
     assert.equal(restored?.identity.phone, phone);
+    assert.equal(restored?.identity.countryCode, "CA");
+    assert.equal(restored?.identity.dialingCode, "+1");
+    assert.equal(restored?.identity.locale, "en-CA");
     assert.equal(restored?.identity.name, "Persistence Test");
     assert.equal(restored?.identity.marketingConsent?.source, "otp-login");
     assert.equal((await prisma.customerAddress.count({ where: { customerId: customer.id } })), 1);
