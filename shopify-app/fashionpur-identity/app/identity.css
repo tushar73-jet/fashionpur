@@ -1,0 +1,21 @@
+:root { font-family: Inter, system-ui, sans-serif; color: #2e2428; background: #fbf7f8; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.identity-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(145deg, #fbf7f8, #f1dfe5); }
+.identity-card { width: min(100%, 460px); padding: clamp(24px, 6vw, 42px); background: #fff; border-radius: 24px; box-shadow: 0 18px 60px rgba(93, 20, 52, .16); }
+.identity-kicker { font-size: .75rem; letter-spacing: .16em; font-weight: 800; color: #941c4b; margin: 0 0 8px; }
+.identity-card h1 { margin: 0 0 8px; font-size: clamp(2rem, 8vw, 2.7rem); }
+.identity-card h2 { font-size: 1.1rem; margin-bottom: 4px; }
+.identity-form { display: grid; gap: 16px; margin-top: 24px; }
+.identity-form label { display: grid; gap: 7px; font-size: .9rem; font-weight: 700; }
+.identity-form input:not([type=checkbox]) { width: 100%; min-height: 50px; border: 1px solid #d7c3cb; border-radius: 10px; padding: 12px; font: inherit; }
+.identity-form button, .identity-secondary { min-height: 50px; border: 0; border-radius: 10px; padding: 12px 16px; background: #8e1745; color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+.identity-form button:disabled { opacity: .65; cursor: wait; }
+.identity-secondary { margin-top: 24px; background: #ede5e7; color: #34252a; }
+.identity-checkbox { grid-template-columns: 18px 1fr; align-items: start; font-weight: 500 !important; line-height: 1.4; }
+.identity-checkbox input { margin-top: 3px; }
+.identity-muted { color: #71656a; font-size: .83rem; line-height: 1.45; margin: 0; }
+.identity-error { padding: 12px; border-radius: 10px; color: #831d35; background: #fff0f1; font-size: .9rem; }
+.identity-verified { padding: 12px; border-radius: 10px; background: #eff9f1; color: #22673c; font-weight: 700; }
+.identity-consent { padding-top: 20px; border-top: 1px solid #eee1e4; }
+.identity-pending { margin-top: 28px; padding: 18px; border-radius: 12px; background: #f7f2f3; color: #695c60; font-size: .9rem; line-height: 1.45; }

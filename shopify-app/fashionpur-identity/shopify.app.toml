@@ -1,0 +1,40 @@
+client_id = "8b8e65384da15fca171a51660a5b0084"
+name = "fashionpur-identity"
+application_url = "https://example.com"
+embedded = true
+
+[access_scopes]
+# Customer/order access is only for verified-profile linkage and that
+# customer's own order history. Shopify may require protected-data approval.
+scopes = "read_customers,write_customers,read_orders,write_app_proxy"
+
+[webhooks]
+api_version = "2026-10"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/create"
+  topics = [ "orders/create" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/updated"
+  topics = [ "orders/updated" ]
+
+[app_proxy]
+url = "/proxy"
+prefix = "apps"
+subpath = "fashionpur-identity"
+
+[auth]
+redirect_urls = [ "https://example.com/auth/callback" ]
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true
