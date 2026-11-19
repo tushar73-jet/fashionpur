@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IdentityService, normalizePhone } from "../app/services/identity.server";
 import { MockOtpProvider } from "../app/services/otp.server";
+import { assertCsrf } from "../app/services/customer-session.server";
 
 test("normalizes supported global phone numbers to E.164", () => {
   const examples = [["+91 99344 56783", "+919934456783", "IN"], ["+971 50 123 4567", "+971501234567", "AE"], ["+966 50 123 4567", "+966501234567", "SA"], ["+44 7500 123456", "+447500123456", "GB"], ["+49 1512 3456789", "+4915123456789", "DE"], ["+33 6 12 34 56 78", "+33612345678", "FR"], ["+1 202 555 0123", "+12025550123", "US"], ["+1 416 555 0123", "+14165550123", "CA"]] as const;
@@ -71,4 +72,10 @@ test("OTP send rate limit protects a phone number", async () => {
   await service.startOtp("+919934456783", "127.0.0.2");
   await service.startOtp("+919934456783", "127.0.0.3");
   await assert.rejects(() => service.startOtp("+919934456783", "127.0.0.4"), /Too many/);
+});
+
+test("CSRF tokens are required for authenticated JSON mutations", () => {
+  assert.doesNotThrow(() => assertCsrf("correct-token", "correct-token"));
+  assert.throws(() => assertCsrf(null, "correct-token"), (error: unknown) => error instanceof Response && error.status === 403);
+  assert.throws(() => assertCsrf("wrong-token", "correct-token"), (error: unknown) => error instanceof Response && error.status === 403);
 });
