@@ -3,7 +3,7 @@
 1. Deploy to a dedicated HTTPS account origin such as `account.fashionpur.com`.
    Do not use the online-store App Proxy for profile sessions.
 2. Add `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`,
-   `CUSTOMER_ACCOUNT_URL`, `IDENTITY_SESSION_SECRET`, `DATABASE_URL`,
+   `CUSTOMER_ACCOUNT_URL`, `IDENTITY_SESSION_SECRET`, `DATABASE_URL`, `DIRECT_URL`,
    `OTP_PROVIDER`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` and approved MSG91
    flow configuration to the deployment secret manager. Never put them in
    storefront code or chat.
