@@ -78,5 +78,9 @@ export class PrismaIdentityService implements IdentityGateway {
     return toIdentity(customer);
   }
 
+  async claimCart(identityId: string, cartToken: string | null) {
+    if (cartToken) await prisma.customerCart.updateMany({ where: { shopifyCartToken: cartToken, customerId: null }, data: { customerId: identityId } });
+  }
+
   private limit(key: string) { const now = Date.now(); const current = this.limits.get(key); const entry = !current || current.resetAt <= now ? { count: 0, resetAt: now + OTP_WINDOW_MS } : current; if (entry.count >= MAX_SENDS) throw new Error("Too many codes requested. Please try again later."); entry.count += 1; this.limits.set(key, entry); }
 }

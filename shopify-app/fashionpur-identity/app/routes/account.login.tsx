@@ -1,4 +1,4 @@
-import { Form, redirect, useActionData, useNavigation } from "react-router";
+import { Form, redirect, useActionData, useNavigation, useSearchParams } from "react-router";
 import { commitCustomerSession, noStoreHeaders } from "../services/customer-session.server";
 import { getIdentityService } from "../services/identity-runtime.server";
 
@@ -31,6 +31,7 @@ export async function action({ request }: { request: Request }) {
         String(form.get("code") ?? ""),
         form.get("marketingConsent") === "on",
       );
+      await service.claimCart(identity.id, String(form.get("cartToken") ?? "") || null);
       const session = await service.createSession(identity.id);
       const headers = noStoreHeaders();
       headers.append("Set-Cookie", commitCustomerSession(session.token, session.expiresAt));
@@ -44,6 +45,7 @@ export async function action({ request }: { request: Request }) {
 }
 
 export default function Login() {
+  const [searchParams] = useSearchParams();
   const data = useActionData() as LoginActionData | undefined;
   const navigation = useNavigation();
   const verifying = data?.stage === "verify" && data.requestId && data.phone;
@@ -59,6 +61,7 @@ export default function Login() {
             <input type="hidden" name="intent" value="verify" />
             <input type="hidden" name="phone" value={data.phone} />
             <input type="hidden" name="requestId" value={data.requestId} />
+            <input type="hidden" name="cartToken" value={searchParams.get("cart_token") ?? ""} />
             <label>Verification code<input name="code" inputMode="numeric" pattern="[0-9]{4,9}" maxLength={9} required autoComplete="one-time-code" /></label>
             <label className="identity-checkbox"><input name="marketingConsent" type="checkbox" /> I agree to receive Fashionpur offers on WhatsApp. Optional; you can unsubscribe anytime.</label>
             <button type="submit" disabled={navigation.state !== "idle"}>{navigation.state === "submitting" ? "Verifying…" : "Verify and continue"}</button>
@@ -67,6 +70,7 @@ export default function Login() {
         ) : (
           <Form method="post" className="identity-form">
             <input type="hidden" name="intent" value="send" />
+            <input type="hidden" name="cartToken" value={searchParams.get("cart_token") ?? ""} />
             <label>Mobile number<input name="phone" type="tel" placeholder="+91 9876543210" inputMode="tel" autoComplete="tel" required /></label>
             <button type="submit" disabled={navigation.state !== "idle"}>{navigation.state === "submitting" ? "Sending…" : "Send OTP"}</button>
             <p className="identity-muted">Use your number with country code. We use it only to verify your Fashionpur profile.</p>

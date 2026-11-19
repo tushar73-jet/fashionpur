@@ -6,12 +6,15 @@
 <script src="{{ 'fashionpur-identity.js' | asset_url }}" defer="defer"></script>
 <fashionpur-identity
   data-account-url="{{ block.settings.account_url | escape }}"
+  data-cart-endpoint="/apps/fashionpur-identity/cart"
   data-return-to="{{ request.path | escape }}"
+  data-delay="{{ block.settings.delay_seconds | times: 1000 }}"
   {{ block.shopify_attributes }}
 >
   <button type="button" class="fashionpur-identity__button" data-identity-login>
     {{ block.settings.button_label | escape }}
   </button>
+  <button type="button" class="fashionpur-identity__account" data-identity-account>My Account</button>
 </fashionpur-identity>
 
 {% schema %}
@@ -20,7 +23,8 @@
   "target": "body",
   "settings": [
     { "type": "url", "id": "account_url", "label": "Customer account URL", "info": "Use your dedicated HTTPS account origin, e.g. https://account.fashionpur.com/account/login" },
-    { "type": "text", "id": "button_label", "label": "Button label", "default": "Sign in" }
+    { "type": "text", "id": "button_label", "label": "Button label", "default": "Sign in" },
+    { "type": "range", "id": "delay_seconds", "label": "Cart popup delay", "min": 0, "max": 30, "step": 1, "default": 3 }
   ]
 }
 {% endschema %}

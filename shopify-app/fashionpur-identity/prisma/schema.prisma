@@ -100,8 +100,8 @@ model CustomerAddress {
 
 model CustomerCart {
   id String @id @default(uuid())
-  customerId String
-  customer IdentityCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId String?
+  customer IdentityCustomer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
   shopifyCartToken String @unique
   cartUrl String?
   currencyCode String?

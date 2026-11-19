@@ -1,2 +1,10 @@
 .fashionpur-identity__button { appearance: none; border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer; font: inherit; min-height: 38px; padding: 7px 14px; border-radius: 999px; }
 .fashionpur-identity__button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.fashionpur-identity__account { display:none; }
+.fashionpur-otp { position:fixed; inset:0; z-index:2147483000; display:grid; place-items:center; padding:16px; background:rgb(35 23 28 / .52); }
+.fashionpur-otp[hidden] { display:none; }
+.fashionpur-otp__panel { width:min(100%,420px); position:relative; padding:30px; border-radius:22px; background:#fff; color:#292126; box-shadow:0 20px 60px #0005; }
+.fashionpur-otp__close { position:absolute; top:12px; right:12px; border:0; background:transparent; font-size:28px; cursor:pointer; }
+.fashionpur-otp__continue { width:100%; min-height:48px; border:0; border-radius:9px; color:#fff; background:#86183f; font:inherit; font-weight:700; cursor:pointer; }
+.fashionpur-otp__dismiss { display:block; width:100%; margin-top:12px; border:0; background:transparent; text-decoration:underline; cursor:pointer; }
+@media (max-width: 749px) { .fashionpur-otp { align-items:end; padding:0; } .fashionpur-otp__panel { width:100%; border-radius:22px 22px 0 0; animation:fashionpur-rise .25s ease-out; padding:28px 24px calc(28px + env(safe-area-inset-bottom)); } @keyframes fashionpur-rise { from { transform:translateY(100%); } to { transform:translateY(0); } } }
