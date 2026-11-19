@@ -31,7 +31,7 @@ export async function action({ request }: { request: Request }) {
         String(form.get("code") ?? ""),
         form.get("marketingConsent") === "on",
       );
-      await service.claimCart(identity.id, String(form.get("cartToken") ?? "") || null);
+      await service.claimCart(identity.id, String(form.get("cartToken") ?? "") || null, String(form.get("cartClaimSecret") ?? "") || null);
       const session = await service.createSession(identity.id);
       const headers = noStoreHeaders();
       headers.append("Set-Cookie", commitCustomerSession(session.token, session.expiresAt));

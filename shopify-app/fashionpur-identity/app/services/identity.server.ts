@@ -24,7 +24,7 @@ export interface IdentityGateway {
   destroySession(token: string | null): Promise<void>;
   updateProfile(identityId: string, profile: { name?: string; email?: string }): Promise<CustomerIdentity>;
   updateMarketingConsent(identityId: string, optedIn: boolean): Promise<CustomerIdentity>;
-  claimCart(identityId: string, cartToken: string | null): Promise<void>;
+  claimCart(identityId: string, cartToken: string | null, claimSecret: string | null): Promise<void>;
 }
 
 type OtpChallenge = {
@@ -140,7 +140,7 @@ export class IdentityService implements IdentityGateway {
     return identity;
   }
 
-  async claimCart(identityId: string, cartToken: string | null) { void identityId; void cartToken; }
+  async claimCart(identityId: string, cartToken: string | null, claimSecret: string | null) { void identityId; void cartToken; void claimSecret; }
 
   private consumeRateLimit(key: string) {
     const now = Date.now();

@@ -103,6 +103,7 @@ model CustomerCart {
   customerId String?
   customer IdentityCustomer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
   shopifyCartToken String @unique
+  claimSecretHash String?
   cartUrl String?
   currencyCode String?
   totalAmount Decimal? @db.Decimal(12,2)
