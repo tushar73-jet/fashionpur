@@ -3,8 +3,16 @@ import type { IdentityGateway } from "./identity.server";
 
 function headers(request: Request) {
   const result = noStoreHeaders();
-  const allowed = process.env.STOREFRONT_ORIGIN;
-  if (allowed && request.headers.get("origin") === allowed) { result.set("Access-Control-Allow-Origin", allowed); result.set("Access-Control-Allow-Credentials", "true"); result.set("Vary", "Origin"); }
+  const configured = process.env.STOREFRONT_ORIGIN;
+  const origin = request.headers.get("origin");
+  const allowedOrigins = new Set((configured ?? "").split(",").map((item) => item.trim()).filter(Boolean));
+  // Fashionpur's storefront commonly redirects between apex and www. Treat
+  // those two HTTPS hosts as the same explicitly configured production store.
+  if (configured && /^https:\/\/(www\.)?fashionpur\.com$/.test(configured)) {
+    allowedOrigins.add("https://fashionpur.com");
+    allowedOrigins.add("https://www.fashionpur.com");
+  }
+  if (origin && allowedOrigins.has(origin)) { result.set("Access-Control-Allow-Origin", origin); result.set("Access-Control-Allow-Credentials", "true"); result.set("Vary", "Origin"); }
   return result;
 }
 export function options(request: Request) { const result = headers(request); result.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS"); result.set("Access-Control-Allow-Headers", "content-type, x-fashionpur-csrf"); return new Response(null, { status: 204, headers: result }); }

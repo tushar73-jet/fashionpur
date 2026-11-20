@@ -34,8 +34,14 @@ export class PrismaIdentityService implements IdentityGateway {
     const challenge = await prisma.otpChallenge.findUnique({ where: { requestId } });
     if (!phone || !challenge || challenge.phone !== phone.e164 || challenge.consumedAt || challenge.expiresAt <= new Date()) throw new Error("This verification request has expired. Please request a new code.");
     if (!(await this.otpProvider.verify(phone.e164, requestId, code)).verified) throw new Error("That verification code is invalid.");
+    await prisma.otpChallenge.update({ where: { requestId }, data: { consumedAt: new Date() } });
+    return this.completeVerifiedPhone(phone.e164, consent, locale);
+  }
+
+  async completeVerifiedPhone(phoneInput: string, consent: boolean, locale?: string | null) {
+    const phone = normalizePhone(phoneInput.trim().startsWith("+") ? phoneInput : `+${phoneInput}`);
+    if (!phone) throw new Error("The verified mobile number is invalid.");
     const customer = await prisma.$transaction(async (tx) => {
-      await tx.otpChallenge.update({ where: { requestId }, data: { consumedAt: new Date() } });
       const preferredLocale = locale?.trim().slice(0, 35) || null;
       const result = await tx.identityCustomer.upsert({ where: { phone: phone.e164 }, create: { id: crypto.randomUUID(), phone: phone.e164, countryCode: phone.countryCode, dialingCode: phone.dialingCode, locale: preferredLocale, verifiedAt: new Date() }, update: { verifiedAt: new Date(), countryCode: phone.countryCode, dialingCode: phone.dialingCode, ...(preferredLocale ? { locale: preferredLocale } : {}) } });
       if (consent) await tx.marketingConsent.create({ data: { id: crypto.randomUUID(), customerId: result.id, channel: "whatsapp", status: "opted_in", source: "otp-login", policyVersion: "2026-11-19" } });

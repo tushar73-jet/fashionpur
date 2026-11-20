@@ -23,6 +23,7 @@ export type CustomerIdentity = {
 export interface IdentityGateway {
   startOtp(phoneInput: string, ip: string): Promise<{ requestId: string; expiresAt: Date }>;
   verifyOtp(phoneInput: string, requestId: string, code: string, consent: boolean, locale?: string | null): Promise<CustomerIdentity>;
+  completeVerifiedPhone(phoneInput: string, consent: boolean, locale?: string | null): Promise<CustomerIdentity>;
   createSession(identityId: string): Promise<{ token: string; csrfToken: string; expiresAt: Date }>;
   getSession(token: string | null): Promise<{ identity: CustomerIdentity; csrfToken: string } | null>;
   destroySession(token: string | null): Promise<void>;
@@ -94,6 +95,12 @@ export class IdentityService implements IdentityGateway {
     const result = await this.otpProvider.verify(phone.e164, requestId, code);
     if (!result.verified) throw new Error("That verification code is invalid.");
     challenge.consumed = true;
+    return this.completeVerifiedPhone(phone.e164, consent, locale);
+  }
+
+  async completeVerifiedPhone(phoneInput: string, consent: boolean, locale?: string | null): Promise<CustomerIdentity> {
+    const phone = normalizePhone(phoneInput.trim().startsWith("+") ? phoneInput : `+${phoneInput}`);
+    if (!phone) throw new Error("The verified mobile number is invalid.");
     let identity = this.identitiesByPhone.get(phone.e164);
     if (!identity) {
       identity = { id: crypto.randomUUID(), phone: phone.e164, countryCode: phone.countryCode, dialingCode: phone.dialingCode, locale: locale?.slice(0, 35) || null, name: null, email: null, verifiedAt: new Date(), marketingConsent: null };
