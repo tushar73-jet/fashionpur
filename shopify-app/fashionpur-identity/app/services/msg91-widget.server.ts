@@ -33,7 +33,19 @@ export async function verifyMsg91WidgetAccessToken(
   });
   const body = await response.json().catch(() => ({})) as { type?: string; message?: unknown; code?: string | number };
   if (!response.ok || body.type !== "success" || typeof body.message !== "string") {
-    throw new Error("MSG91 could not validate this OTP. Please request a new code.");
+    // Never log or return an access token. The provider's type/code/message are
+    // safe diagnostics for a staging integration and make an invalid/stale
+    // auth key distinguishable from an expired OTP.
+    console.warn("MSG91 Widget access-token validation failed", {
+      status: response.status,
+      type: body.type ?? null,
+      code: body.code ?? null,
+      message: typeof body.message === "string" ? body.message : null,
+    });
+    const providerMessage = typeof body.message === "string" && body.message.length <= 160
+      ? body.message
+      : "Verification was rejected.";
+    throw new Error(`MSG91 could not validate this OTP: ${providerMessage}`);
   }
   const identifier = body.message.startsWith("+") ? body.message : `+${body.message}`;
   const phone = normalizePhone(identifier);

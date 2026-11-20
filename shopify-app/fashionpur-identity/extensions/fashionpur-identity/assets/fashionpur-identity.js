@@ -7,10 +7,14 @@
   const endpoint = host.dataset.cartEndpoint;
   const accountUrl = host.dataset.accountUrl;
   const delay = Number(host.dataset.delay || 3000);
+  const testPopup = new URLSearchParams(location.search).has("identity_popup_test") || new URLSearchParams(location.search).has("identity_widget_test");
   let cart, requestId, phone, widgetConfig, widgetLoading, widgetInitializationError, resendUntil = 0, resendTimer, storefrontAuthenticated = false;
 
   const dismissalUntil = () => { try { return Number(localStorage.getItem(DISMISS) || 0); } catch { return 0; } };
-  const canPrompt = () => !storefrontAuthenticated && Date.now() >= dismissalUntil();
+  // Draft-theme testing must not require clearing mobile Safari/Chrome storage
+  // after a shopper has dismissed the prompt. This query parameter is inert
+  // unless explicitly present and is not used by normal shoppers.
+  const canPrompt = () => !storefrontAuthenticated && (testPopup || Date.now() >= dismissalUntil());
   const secretFor = (token) => {
     const key = `fashionpur_cart_claim_${token}`;
     let value = localStorage.getItem(key);
