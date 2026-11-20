@@ -79,7 +79,15 @@
     method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   }).then(json);
   const getWidgetConfig = () => fetch(new URL("/account/api/otp/widget-config", accountUrl).toString(), { credentials: "include" }).then(json);
-  const callbackError = (reason) => new Error(typeof reason === "string" ? reason : reason?.message || "MSG91 could not process this request.");
+  // MSG91's browser SDK returns provider errors under `data.errors` in some
+  // failure paths. Preserve its safe, shopper-facing message instead of
+  // replacing it with an unhelpful generic error.
+  const callbackError = (reason) => {
+    const message = typeof reason === "string"
+      ? reason
+      : reason?.data?.errors || reason?.data?.message || reason?.message || reason?.error;
+    return new Error(typeof message === "string" && message.trim() ? message : "MSG91 could not process this request.");
+  };
   const asPromise = (call) => new Promise((resolve, reject) => call(resolve, reject));
   const loadWidget = async () => {
     if (window.sendOtp && window.verifyOtp && window.retryOtp) return widgetConfig;
