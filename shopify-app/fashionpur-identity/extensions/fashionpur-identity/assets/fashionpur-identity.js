@@ -7,7 +7,7 @@
   const endpoint = host.dataset.cartEndpoint;
   const accountUrl = host.dataset.accountUrl;
   const delay = Number(host.dataset.delay || 3000);
-  let cart, requestId, phone, widgetConfig, widgetLoading, resendUntil = 0, resendTimer, storefrontAuthenticated = false;
+  let cart, requestId, phone, widgetConfig, widgetLoading, widgetInitializationError, resendUntil = 0, resendTimer, storefrontAuthenticated = false;
 
   const dismissalUntil = () => { try { return Number(localStorage.getItem(DISMISS) || 0); } catch { return 0; } };
   const canPrompt = () => !storefrontAuthenticated && Date.now() >= dismissalUntil();
@@ -95,7 +95,17 @@
         document.head.append(script);
       });
       if (!window.initSendOTP) throw new Error("MSG91 Widget did not initialize.");
-      window.initSendOTP({ widgetId: widgetConfig.widgetId, tokenAuth: widgetConfig.tokenAuth, exposeMethods: true, captchaRenderId: "fashionpur-msg91-captcha" });
+      // MSG91's current SDK requires both callbacks even when custom UI uses
+      // exposed methods.  Without them it returns before exposing sendOtp.
+      widgetInitializationError = null;
+      window.initSendOTP({
+        widgetId: widgetConfig.widgetId,
+        tokenAuth: widgetConfig.tokenAuth,
+        exposeMethods: true,
+        captchaRenderId: "fashionpur-msg91-captcha",
+        success: () => {},
+        failure: (item) => { widgetInitializationError = callbackError(item).message; },
+      });
       if (!window.sendOtp || !window.verifyOtp || !window.retryOtp) throw new Error("MSG91 Widget is not ready. Please try again.");
       return widgetConfig;
     })();
@@ -103,6 +113,7 @@
   };
   const sendWidgetOtp = async () => {
     await loadWidget();
+    if (widgetInitializationError) throw new Error(widgetInitializationError);
     const data = await asPromise((resolve, reject) => window.sendOtp(phone.slice(1), resolve, (item) => reject(callbackError(item))));
     requestId = data?.message || data?.requestId || data?.reqId || null;
     if (!requestId) throw new Error("MSG91 did not return an OTP request. Please try again.");

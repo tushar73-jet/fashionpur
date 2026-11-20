@@ -20,6 +20,8 @@ test("the storefront extension owns Dawn desktop and mobile account links", asyn
   assert.match(script, /https:\/\/verify\.msg91\.com\/otp-provider\.js/);
   assert.match(script, /account\/api\/otp\/widget-config/);
   assert.match(script, /account\/api\/otp\/widget-verify/);
+  assert.match(script, /success: \(\) => \{\}/);
+  assert.match(script, /failure: \(item\) => \{ widgetInitializationError/);
 });
 
 test("OTP API routes answer browser CORS preflight requests", async () => {
