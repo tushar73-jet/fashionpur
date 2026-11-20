@@ -10,6 +10,13 @@ test("the staging app embed falls back to the deployed account origin", async ()
   assert.match(liquid, /data-account-url="\{\{ block\.settings\.account_url \| default: 'https:\/\/fashionpur\.onrender\.com' \| escape \}\}"/);
 });
 
+test("the storefront extension owns Dawn desktop and mobile account links", async () => {
+  const script = await readFile(new URL("../extensions/fashionpur-identity/assets/fashionpur-identity.js", import.meta.url), "utf8");
+  assert.match(script, /#customer_login_link/);
+  assert.match(script, /\.fp-mobile-nav a\[href\^='\/account'\]/);
+  assert.match(script, /openAccountOrLogin/);
+});
+
 test("normalizes supported global phone numbers to E.164", () => {
   const examples = [["+91 99344 56783", "+919934456783", "IN"], ["+971 50 123 4567", "+971501234567", "AE"], ["+966 50 123 4567", "+966501234567", "SA"], ["+44 7500 123456", "+447500123456", "GB"], ["+49 1512 3456789", "+4915123456789", "DE"], ["+33 6 12 34 56 78", "+33612345678", "FR"], ["+1 202 555 0123", "+12025550123", "US"], ["+1 416 555 0123", "+14165550123", "CA"]] as const;
   for (const [input, expected, country] of examples) { const result = normalizePhone(input); assert.equal(result?.e164, expected); assert.equal(result?.countryCode, country); }
