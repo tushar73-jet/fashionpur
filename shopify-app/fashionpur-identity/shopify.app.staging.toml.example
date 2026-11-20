@@ -1,0 +1,42 @@
+# Create a separate custom-distribution Shopify app for staging, then run:
+#   shopify app config link --config staging
+# This generates a real shopify.app.staging.toml with its staging app client_id.
+# Do not use this template with `shopify app deploy` until it has that client_id.
+
+client_id = "REPLACE_WITH_STAGING_APP_CLIENT_ID"
+name = "Fashionpur Identity Staging"
+application_url = "https://account-staging.fashionpur.com"
+embedded = true
+
+[access_scopes]
+scopes = "read_customers,write_customers,read_orders,write_app_proxy"
+
+[webhooks]
+api_version = "2026-10"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/create"
+  topics = [ "orders/create" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/updated"
+  topics = [ "orders/updated" ]
+
+[app_proxy]
+url = "/proxy"
+prefix = "apps"
+subpath = "fashionpur-identity"
+
+[auth]
+redirect_urls = [ "https://account-staging.fashionpur.com/auth/callback" ]
+
+[build]
+automatically_update_urls_on_dev = false

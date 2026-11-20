@@ -1,3 +1,4 @@
 import { getIdentityService } from "../services/identity-runtime.server";
 import { options, response } from "../services/storefront-api.server";
+export async function loader({ request }: { request: Request }) { if (request.method === "OPTIONS") return options(request); return response(request, { error: "Method not allowed." }, 405); }
 export async function action({ request }: { request: Request }) { if (request.method === "OPTIONS") return options(request); try { const body = await request.json() as { phone?: string }; const item = await getIdentityService().startOtp(body.phone ?? "", request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown"); return response(request, { requestId: item.requestId, expiresAt: item.expiresAt }); } catch (error) { return response(request, { error: error instanceof Error ? error.message : "Unable to send code." }, 400); } }

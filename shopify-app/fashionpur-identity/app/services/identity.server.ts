@@ -23,7 +23,10 @@ export type CustomerIdentity = {
 export interface IdentityGateway {
   startOtp(phoneInput: string, ip: string): Promise<{ requestId: string; expiresAt: Date }>;
   verifyOtp(phoneInput: string, requestId: string, code: string, consent: boolean, locale?: string | null): Promise<CustomerIdentity>;
+  completeVerifiedPhone(phoneInput: string, consent: boolean, locale?: string | null): Promise<CustomerIdentity>;
   createSession(identityId: string): Promise<{ token: string; csrfToken: string; expiresAt: Date }>;
+  createLoginHandoff(identityId: string, returnPath: string): Promise<{ code: string; expiresAt: Date }>;
+  consumeLoginHandoff(code: string): Promise<{ session: { token: string; csrfToken: string; expiresAt: Date }; returnPath: string }>;
   getSession(token: string | null): Promise<{ identity: CustomerIdentity; csrfToken: string } | null>;
   destroySession(token: string | null): Promise<void>;
   updateProfile(identityId: string, profile: { name?: string; email?: string }): Promise<CustomerIdentity>;
@@ -39,11 +42,13 @@ type OtpChallenge = {
 };
 
 type StoredSession = { identityId: string; csrfToken: string; expiresAt: Date };
+type StoredHandoff = { identityId: string; returnPath: string; expiresAt: Date; consumed: boolean };
 type RateLimit = { count: number; resetAt: number };
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const OTP_WINDOW_MS = 15 * 60 * 1000;
 const MAX_OTP_SENDS_PER_WINDOW = 3;
+const HANDOFF_TTL_MS = 2 * 60 * 1000;
 
 export function normalizePhone(input: string, country?: string | null): { e164: string; countryCode: string; dialingCode: string } | null {
   const parsed = parsePhoneNumberFromString(input.trim(), country ? country.toUpperCase() as CountryCode : undefined);
@@ -65,6 +70,7 @@ export class IdentityService implements IdentityGateway {
   private readonly identitiesById = new Map<string, CustomerIdentity>();
   private readonly challenges = new Map<string, OtpChallenge>();
   private readonly sessions = new Map<string, StoredSession>();
+  private readonly handoffs = new Map<string, StoredHandoff>();
   private readonly rateLimits = new Map<string, RateLimit>();
 
   constructor(private readonly otpProvider: OtpProvider) {}
@@ -94,6 +100,12 @@ export class IdentityService implements IdentityGateway {
     const result = await this.otpProvider.verify(phone.e164, requestId, code);
     if (!result.verified) throw new Error("That verification code is invalid.");
     challenge.consumed = true;
+    return this.completeVerifiedPhone(phone.e164, consent, locale);
+  }
+
+  async completeVerifiedPhone(phoneInput: string, consent: boolean, locale?: string | null): Promise<CustomerIdentity> {
+    const phone = normalizePhone(phoneInput.trim().startsWith("+") ? phoneInput : `+${phoneInput}`);
+    if (!phone) throw new Error("The verified mobile number is invalid.");
     let identity = this.identitiesByPhone.get(phone.e164);
     if (!identity) {
       identity = { id: crypto.randomUUID(), phone: phone.e164, countryCode: phone.countryCode, dialingCode: phone.dialingCode, locale: locale?.slice(0, 35) || null, name: null, email: null, verifiedAt: new Date(), marketingConsent: null };
@@ -112,6 +124,21 @@ export class IdentityService implements IdentityGateway {
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
     this.sessions.set(sha256(token), { identityId, csrfToken, expiresAt });
     return { token, csrfToken, expiresAt };
+  }
+
+  async createLoginHandoff(identityId: string, returnPath: string) {
+    if (!this.identitiesById.has(identityId)) throw new Error("Profile was not found.");
+    const code = randomToken();
+    const expiresAt = new Date(Date.now() + HANDOFF_TTL_MS);
+    this.handoffs.set(sha256(code), { identityId, returnPath, expiresAt, consumed: false });
+    return { code, expiresAt };
+  }
+
+  async consumeLoginHandoff(code: string) {
+    const handoff = this.handoffs.get(sha256(code));
+    if (!handoff || handoff.consumed || handoff.expiresAt <= new Date()) throw new Error("This login link has expired or already used. Please sign in again.");
+    handoff.consumed = true;
+    return { session: await this.createSession(handoff.identityId), returnPath: handoff.returnPath };
   }
 
   async getSession(token: string | null): Promise<{ identity: CustomerIdentity; csrfToken: string } | null> {

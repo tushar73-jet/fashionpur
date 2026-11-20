@@ -5,7 +5,7 @@
 {{ 'fashionpur-identity.css' | asset_url | stylesheet_tag }}
 <script src="{{ 'fashionpur-identity.js' | asset_url }}" defer="defer"></script>
 <fashionpur-identity
-  data-account-url="{{ block.settings.account_url | escape }}"
+  data-account-url="{{ block.settings.account_url | default: 'https://fashionpur.onrender.com' | escape }}"
   data-cart-endpoint="/apps/fashionpur-identity/cart"
   data-return-to="{{ request.path | escape }}"
   data-delay="{{ block.settings.delay_seconds | times: 1000 }}"
