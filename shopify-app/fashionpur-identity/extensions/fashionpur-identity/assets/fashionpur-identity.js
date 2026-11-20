@@ -1,6 +1,6 @@
 (() => {
   const DISMISS = "fashionpur_identity_popup_dismissed_until";
-  const ACCOUNT_CONTROL = "#customer_login_link, .fp-mobile-nav a[href^='/account']";
+  const ACCOUNT_CONTROL = "#customer_login_link, a[href='/account'], a[href^='/account?'], .fp-mobile-nav a[href^='/account']";
   const host = document.querySelector("fashionpur-identity");
   if (!host) return;
 
@@ -8,7 +8,7 @@
   const accountUrl = host.dataset.accountUrl;
   const delay = Number(host.dataset.delay || 3000);
   const testPopup = new URLSearchParams(location.search).has("identity_popup_test") || new URLSearchParams(location.search).has("identity_widget_test");
-  let cart, requestId, phone, widgetConfig, widgetLoading, widgetInitializationError, resendUntil = 0, resendTimer, storefrontAuthenticated = false;
+  let cart, requestId, phone, widgetConfig, widgetLoading, widgetInitializationError, resendUntil = 0, resendTimer, storefrontAuthenticated = false, otpState = "idle";
 
   const dismissalUntil = () => { try { return Number(localStorage.getItem(DISMISS) || 0); } catch { return 0; } };
   // Draft-theme testing must not require clearing mobile Safari/Chrome storage
@@ -79,8 +79,9 @@
     if (!response.ok) throw new Error(data.error || "Please try again.");
     return data;
   };
+  const attemptId = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const api = (path, body) => fetch(new URL(path, accountUrl).toString(), {
-    method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    method: "POST", credentials: "include", headers: { "content-type": "application/json", "x-fashionpur-attempt": attemptId() }, body: JSON.stringify(body),
   }).then(json);
   const getWidgetConfig = () => fetch(new URL("/account/api/otp/widget-config", accountUrl).toString(), { credentials: "include" }).then(json);
   // MSG91's browser SDK returns provider errors under `data.errors` in some
@@ -93,6 +94,30 @@
     return new Error(typeof message === "string" && message.trim() ? message : "MSG91 could not process this request.");
   };
   const asPromise = (call) => new Promise((resolve, reject) => call(resolve, reject));
+  const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+  const widgetData = () => typeof window.getWidgetData === "function" ? window.getWidgetData() : null;
+  const waitForWidgetReady = async () => {
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      const data = widgetData();
+      if (data) return data;
+      await pause(100);
+    }
+    throw new Error("MSG91 Widget is still initializing. Please try again.");
+  };
+  // MSG91 returns its JWT at `access-token`; `message` is usually only a
+  // shopper-facing success message and cannot be verified server-side.
+  const extractAccessToken = (value) => {
+    const root = value && typeof value === "object" ? value : {};
+    const nested = root.data && typeof root.data === "object" ? root.data : {};
+    const candidates = [
+      typeof value === "string" ? value : null,
+      root["access-token"], root.accessToken, root.access_token, root.token,
+      nested["access-token"], nested.accessToken, nested.access_token, nested.token,
+      root.message, nested.message,
+    ];
+    return candidates.find((candidate) => typeof candidate === "string" && /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(candidate)) || null;
+  };
+  const retryChannel = () => String(widgetData()?.widgetType?.value ?? widgetData()?.widgetType) === "2" ? "11" : null;
   const loadWidget = async () => {
     if (window.sendOtp && window.verifyOtp && window.retryOtp) return widgetConfig;
     if (widgetLoading) return widgetLoading;
@@ -107,8 +132,8 @@
         document.head.append(script);
       });
       if (!window.initSendOTP) throw new Error("MSG91 Widget did not initialize.");
-      // MSG91's current SDK requires both callbacks even when custom UI uses
-      // exposed methods.  Without them it returns before exposing sendOtp.
+      // The SDK requires a success callback during initialisation. Method
+      // callbacks below own the shopper-visible OTP state and errors.
       widgetInitializationError = null;
       window.initSendOTP({
         widgetId: widgetConfig.widgetId,
@@ -119,6 +144,7 @@
         failure: (item) => { widgetInitializationError = callbackError(item).message; },
       });
       if (!window.sendOtp || !window.verifyOtp || !window.retryOtp) throw new Error("MSG91 Widget is not ready. Please try again.");
+      await waitForWidgetReady();
       return widgetConfig;
     })();
     try { return await widgetLoading; } catch (item) { widgetLoading = null; throw item; }
@@ -132,17 +158,20 @@
   };
   const retryWidgetOtp = async () => {
     await loadWidget();
-    const data = await asPromise((resolve, reject) => window.retryOtp(null, resolve, (item) => reject(callbackError(item)), requestId));
+    const data = await asPromise((resolve, reject) => window.retryOtp(retryChannel(), resolve, (item) => reject(callbackError(item)), requestId));
     requestId = data?.message || data?.requestId || data?.reqId || requestId;
   };
   const verifyWidgetOtp = async () => {
     const data = await asPromise((resolve, reject) => window.verifyOtp(codeInput.value.trim(), resolve, (item) => reject(callbackError(item)), requestId));
-    const accessToken = typeof data === "string" ? data : data?.message || data?.accessToken || data?.access_token || data?.token;
+    const accessToken = extractAccessToken(data);
     if (!accessToken) throw new Error("MSG91 did not return a verified login token. Please request a new code.");
-    return api("/account/api/otp/widget-verify", {
+    const result = await api("/account/api/otp/widget-verify", {
       accessToken, consent: consent.checked, locale: navigator.language || null,
       cartToken: cart?.token, cartClaimSecret: cart?.token ? secretFor(cart.token) : null,
+      returnPath: `${location.pathname}${location.search}`,
     });
+    if (!result.handoffUrl) throw new Error("Fashionpur could not complete your secure sign-in. Please try again.");
+    return result;
   };
 
   const resend = document.createElement("button");
@@ -166,6 +195,8 @@
     }, 250);
   };
   resend.addEventListener("click", async () => {
+    if (otpState !== "awaiting-code") return;
+    otpState = "resending";
     error.textContent = "";
     resend.disabled = true;
     resend.textContent = "Resending…";
@@ -177,11 +208,14 @@
       resend.disabled = false;
       resend.textContent = "Resend OTP";
       error.textContent = item.message;
+    } finally {
+      if (otpState === "resending") otpState = "awaiting-code";
     }
   });
 
   button.addEventListener("click", async () => {
     error.textContent = "";
+    if (otpState === "sending" || otpState === "resending" || otpState === "verifying") return;
     if (!requestId) {
       const raw = phoneInput.value.trim();
       const selected = countryOption(countryInput.value);
@@ -195,10 +229,12 @@
         error.textContent = "Enter a valid international mobile number.";
         return;
       }
+      otpState = "sending";
       button.disabled = true;
       button.textContent = "Sending…";
       try {
         await sendWidgetOtp();
+        otpState = "awaiting-code";
         codeInput.hidden = false;
         phoneInput.hidden = true;
         countryInput.hidden = true;
@@ -211,6 +247,7 @@
         error.textContent = item.message;
         button.textContent = "Get OTP";
       } finally {
+        if (otpState === "sending") otpState = "idle";
         button.disabled = false;
       }
       return;
@@ -219,18 +256,19 @@
       error.textContent = "Enter the OTP sent to your phone.";
       return;
     }
+    otpState = "verifying";
     button.disabled = true;
     button.textContent = "Verifying…";
     try {
-      await verifyWidgetOtp();
+      const result = await verifyWidgetOtp();
       clearInterval(resendTimer);
-      modal.hidden = true;
-      storefrontAuthenticated = true;
-      host.querySelector("[data-identity-login]").hidden = true;
-      host.querySelector("[data-identity-account]").style.display = "inline-block";
+      // This is a top-level visit to the dedicated account origin. It sets an
+      // HttpOnly cookie there; no reusable session credential is exposed here.
+      location.assign(result.handoffUrl);
     } catch (item) {
       error.textContent = item.message;
     } finally {
+      if (otpState === "verifying") otpState = "awaiting-code";
       button.disabled = false;
       button.textContent = "Verify OTP";
     }

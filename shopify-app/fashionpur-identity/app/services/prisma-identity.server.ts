@@ -7,6 +7,7 @@ import type { OtpProvider } from "./otp.server";
 const TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const OTP_WINDOW_MS = 15 * 60 * 1000;
 const MAX_SENDS = 3;
+const HANDOFF_TTL_MS = 2 * 60 * 1000;
 const hash = (value: string) => crypto.createHash("sha256").update(value).digest("hex");
 const token = () => crypto.randomBytes(32).toString("base64url");
 
@@ -54,6 +55,22 @@ export class PrismaIdentityService implements IdentityGateway {
     const raw = token(), csrfToken = token(), expiresAt = new Date(Date.now() + TTL_MS);
     await prisma.identitySession.create({ data: { id: crypto.randomUUID(), tokenHash: hash(raw), csrfToken, expiresAt, customerId: identityId } });
     return { token: raw, csrfToken, expiresAt };
+  }
+
+  async createLoginHandoff(identityId: string, returnPath: string) {
+    const raw = token();
+    const expiresAt = new Date(Date.now() + HANDOFF_TTL_MS);
+    await prisma.identityLoginHandoff.create({ data: { id: crypto.randomUUID(), codeHash: hash(raw), customerId: identityId, returnPath, expiresAt } });
+    return { code: raw, expiresAt };
+  }
+
+  async consumeLoginHandoff(raw: string) {
+    const codeHash = hash(raw);
+    const handoff = await prisma.identityLoginHandoff.findUnique({ where: { codeHash } });
+    if (!handoff || handoff.consumedAt || handoff.expiresAt <= new Date()) throw new Error("This login link has expired or already used. Please sign in again.");
+    const consumed = await prisma.identityLoginHandoff.updateMany({ where: { id: handoff.id, consumedAt: null, expiresAt: { gt: new Date() } }, data: { consumedAt: new Date() } });
+    if (consumed.count !== 1) throw new Error("This login link has expired or already used. Please sign in again.");
+    return { session: await this.createSession(handoff.customerId), returnPath: handoff.returnPath };
   }
 
   async getSession(raw: string | null) {

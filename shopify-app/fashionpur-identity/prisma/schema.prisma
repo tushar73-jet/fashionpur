@@ -45,6 +45,20 @@ model IdentityCustomer {
   addresses CustomerAddress[]
   carts CustomerCart[]
   orders CustomerOrder[]
+  loginHandoffs IdentityLoginHandoff[]
+}
+
+model IdentityLoginHandoff {
+  id String @id @default(uuid())
+  codeHash String @unique
+  returnPath String
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+  customerId String
+  customer IdentityCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  @@index([customerId, expiresAt])
+  @@index([expiresAt])
 }
 
 model IdentitySession {

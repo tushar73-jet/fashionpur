@@ -1,10 +1,8 @@
 import { commitCustomerSession, destroyCustomerSession, noStoreHeaders, requireCustomerSession, sessionTokenFromRequest } from "./customer-session.server";
 import type { IdentityGateway } from "./identity.server";
 
-function headers(request: Request) {
-  const result = noStoreHeaders();
+function allowedOrigins() {
   const configured = process.env.STOREFRONT_ORIGIN;
-  const origin = request.headers.get("origin");
   const allowedOrigins = new Set((configured ?? "").split(",").map((item) => item.trim()).filter(Boolean));
   // Fashionpur's storefront commonly redirects between apex and www. Treat
   // those two HTTPS hosts as the same explicitly configured production store.
@@ -12,9 +10,18 @@ function headers(request: Request) {
     allowedOrigins.add("https://fashionpur.com");
     allowedOrigins.add("https://www.fashionpur.com");
   }
-  if (origin && allowedOrigins.has(origin)) { result.set("Access-Control-Allow-Origin", origin); result.set("Access-Control-Allow-Credentials", "true"); result.set("Vary", "Origin"); }
+  return allowedOrigins;
+}
+export function isAllowedStorefrontOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+  return Boolean(origin && allowedOrigins().has(origin));
+}
+function headers(request: Request) {
+  const result = noStoreHeaders();
+  const origin = request.headers.get("origin");
+  if (origin && allowedOrigins().has(origin)) { result.set("Access-Control-Allow-Origin", origin); result.set("Access-Control-Allow-Credentials", "true"); result.set("Vary", "Origin"); }
   return result;
 }
-export function options(request: Request) { const result = headers(request); result.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS"); result.set("Access-Control-Allow-Headers", "content-type, x-fashionpur-csrf"); return new Response(null, { status: 204, headers: result }); }
+export function options(request: Request) { const result = headers(request); result.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS"); result.set("Access-Control-Allow-Headers", "content-type, x-fashionpur-csrf, x-fashionpur-attempt"); return new Response(null, { status: 204, headers: result }); }
 export function response(request: Request, data: unknown, status = 200, extra?: Headers) { const result = headers(request); result.set("content-type", "application/json"); extra?.forEach((value, key) => result.append(key, value)); return new Response(JSON.stringify(data), { status, headers: result }); }
 export { commitCustomerSession, destroyCustomerSession, requireCustomerSession, sessionTokenFromRequest, type IdentityGateway };

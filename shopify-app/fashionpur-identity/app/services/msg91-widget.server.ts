@@ -22,6 +22,7 @@ export async function verifyMsg91WidgetAccessToken(
   accessToken: string,
   env: WidgetEnvironment = process.env,
   request: FetchLike = fetch,
+  correlationId?: string,
 ): Promise<string> {
   const config = getMsg91WidgetConfig(env);
   if (!accessToken || accessToken.length > 8_192) throw new Error("The OTP verification result is invalid. Please request a new code.");
@@ -37,10 +38,10 @@ export async function verifyMsg91WidgetAccessToken(
     // safe diagnostics for a staging integration and make an invalid/stale
     // auth key distinguishable from an expired OTP.
     console.warn("MSG91 Widget access-token validation failed", {
+      correlationId: correlationId ?? null,
       status: response.status,
       type: body.type ?? null,
       code: body.code ?? null,
-      message: typeof body.message === "string" ? body.message : null,
     });
     const providerMessage = typeof body.message === "string" && body.message.length <= 160
       ? body.message

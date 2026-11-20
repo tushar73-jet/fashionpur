@@ -5,7 +5,10 @@ import { IdentityService, normalizePhone } from "../app/services/identity.server
 import { MockOtpProvider } from "../app/services/otp.server";
 import { assertCsrf } from "../app/services/customer-session.server";
 import { getMsg91WidgetConfig, verifyMsg91WidgetAccessToken } from "../app/services/msg91-widget.server";
-import { response as storefrontResponse } from "../app/services/storefront-api.server";
+import { extractMsg91WidgetAccessToken, retryChannelForWidget } from "../app/services/msg91-widget-contract";
+import { isAllowedStorefrontOrigin, response as storefrontResponse } from "../app/services/storefront-api.server";
+import { safeStorefrontReturnPath } from "../app/services/login-handoff.server";
+import { otpCorrelationId, otpFailureCategory } from "../app/services/otp-diagnostics.server";
 
 test("the staging app embed falls back to the deployed account origin", async () => {
   const liquid = await readFile(new URL("../extensions/fashionpur-identity/blocks/identity-embed.liquid", import.meta.url), "utf8");
@@ -46,6 +49,19 @@ test("storefront CORS accepts both Fashionpur production hostnames", () => {
   }
 });
 
+test("Widget endpoints only accept the configured storefront origin", () => {
+  const previous = process.env.STOREFRONT_ORIGIN;
+  process.env.STOREFRONT_ORIGIN = "https://fashionpur.com";
+  try {
+    assert.equal(isAllowedStorefrontOrigin(new Request("https://account.example/account/api/otp/widget-verify", { headers: { origin: "https://fashionpur.com" } })), true);
+    assert.equal(isAllowedStorefrontOrigin(new Request("https://account.example/account/api/otp/widget-verify", { headers: { origin: "https://attacker.example" } })), false);
+    assert.equal(isAllowedStorefrontOrigin(new Request("https://account.example/account/api/otp/widget-verify")), false);
+  } finally {
+    if (previous === undefined) delete process.env.STOREFRONT_ORIGIN;
+    else process.env.STOREFRONT_ORIGIN = previous;
+  }
+});
+
 test("MSG91 Widget configuration requires its SDK credentials instead of a SendOTP template", () => {
   const config = getMsg91WidgetConfig({
     OTP_PROVIDER: "msg91-widget",
@@ -74,6 +90,21 @@ test("MSG91 Widget access-token verification accepts only a provider-verified in
   assert.match(requested.url ?? "", /verifyAccessToken$/);
   assert.equal(requested.authkey, "server-auth-key");
   assert.deepEqual(requested.body, { "access-token": "verified-widget-token" });
+});
+
+test("MSG91 Widget verification uses its access-token instead of the success message", () => {
+  const accessToken = extractMsg91WidgetAccessToken({
+    type: "success",
+    message: "OTP verified successfully",
+    "access-token": "eyJhbGciOiJub25lIn0.verified.payload",
+  });
+  assert.equal(accessToken, "eyJhbGciOiJub25lIn0.verified.payload");
+  assert.equal(extractMsg91WidgetAccessToken({ type: "success", message: "OTP verified successfully" }), null);
+});
+
+test("MSG91 Widget retry uses null for default widgets and SMS channel 11 for custom SMS widgets", () => {
+  assert.equal(retryChannelForWidget({ widgetType: { value: "1" } }), null);
+  assert.equal(retryChannelForWidget({ widgetType: { value: "2" } }), "11");
 });
 
 test("normalizes supported global phone numbers to E.164", () => {
@@ -144,6 +175,30 @@ test("sessions can be destroyed and profile updates require the verified identit
   assert.equal((await service.getSession(session.token))?.identity.email, "tushar@example.com");
   await service.destroySession(session.token);
   assert.equal(await service.getSession(session.token), null);
+});
+
+test("login handoffs are one-time and do not expose a reusable session token", async () => {
+  const service = new IdentityService(new MockOtpProvider("123456"));
+  const identity = await service.completeVerifiedPhone("14165550123", false, "en-CA");
+  const handoff = await service.createLoginHandoff(identity.id, "/cart");
+  assert.match(handoff.code, /^[A-Za-z0-9_-]{20,}$/);
+  const completed = await service.consumeLoginHandoff(handoff.code);
+  assert.equal(completed.returnPath, "/cart");
+  assert.ok(completed.session.token.length >= 32);
+  await assert.rejects(() => service.consumeLoginHandoff(handoff.code), /expired or already used/);
+});
+
+test("handoff redirects accept only a local storefront path", () => {
+  assert.equal(safeStorefrontReturnPath("/cart?view=drawer"), "/cart?view=drawer");
+  assert.equal(safeStorefrontReturnPath("https://attacker.example"), "/");
+  assert.equal(safeStorefrontReturnPath("//attacker.example"), "/");
+});
+
+test("OTP diagnostics keep a supplied correlation id and never need sensitive request data", () => {
+  const request = new Request("https://account.example/account/api/otp/widget-verify", { headers: { "x-fashionpur-attempt": "attempt_123456789" } });
+  assert.equal(otpCorrelationId(request), "attempt_123456789");
+  assert.equal(otpFailureCategory(new Error("MSG91 could not validate this OTP.")), "provider_rejected");
+  assert.equal(otpFailureCategory(new Error("Unexpected database failure")), "application_rejected");
 });
 
 test("OTP send rate limit protects a phone number", async () => {
